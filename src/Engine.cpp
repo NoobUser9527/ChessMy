@@ -10,191 +10,211 @@
 Engine::Engine()
 {
 	// 创建Shader
-
-	chessManShader = CreateShader("src\\shader\\chessManShader.vert", "src\\shader\\chessManShader.frag");
 	boardShader = CreateShader("src\\shader\\boardShader.vert", "src\\shader\\boardShader.frag");
 
 	CreateVAO();
 	CreateBoardVBO();
 
-	
+	Texture("res\\texture\\line.png", line);
+	Texture("res\\texture\\slash.png", slash);
+	Texture("res\\texture\\chessman1.png", texChessman1);
+	Texture("res\\texture\\chessman2.png", texChessman2);
+	Texture("res\\texture\\ring.png", ring);
+
+
+	BindTexture(line, 1);
+	BindTexture(slash, 2);
+	BindTexture(texChessman1, 3);
+	BindTexture(texChessman2, 4);
+	BindTexture(ring, 5);
 }
 
 Engine::~Engine()
 {
-	glDeleteTextures(1, &texture1);
-	glDeleteTextures(1, &texture2);
+	// delete texture
+	glDeleteTextures(1, &line);
+	glDeleteTextures(1, &slash);
+	glDeleteTextures(1, &texChessman1);
+	glDeleteTextures(1, &texChessman2);
+	glDeleteTextures(1, &ring);
 
+	// delete shader
 	glDeleteProgram(boardShader);
-	glDeleteProgram(chessManShader);
-
+	
+	//delete VBO
 	glDeleteBuffers(1, &boardVBO);
-	glDeleteBuffers(1, &chessManVBO);
 
+	//delete VAO
 	glDeleteVertexArrays(1, &VAO);
 }
 
-void Engine::ChessManTexture(const char* path1, const char* path2)
+
+void Engine::Clear()
 {
-	stbi_set_flip_vertically_on_load(true);
-	unsigned char* pixels = nullptr;
-	int width = 0, height = 0, nrChannels = 0;
-
-	pixels = stbi_load(path1, &width, &height, &nrChannels, 3);
-	// req_comp
-	// 1 灰度图
-	// 2 灰度图加透明度
-	// 3 红绿蓝 RGB 三色图
-	// 4 红绿蓝加透明度 RGBA 图
-
-	glGenTextures(1, &texture1);
-	glBindTexture(GL_TEXTURE_2D, texture1);
-
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-	if (pixels)
-	{
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-		glGenerateMipmap(GL_TEXTURE_2D);
-	}
-	else
-	{
-		std::cout << "加载纹理:\"" << path1 << "\"失败！" << std::endl;
-	}
-	stbi_image_free(pixels);
-
-
-	pixels = stbi_load(path2, &width, &height, &nrChannels, 3);
-
-	glGenTextures(1, &texture2);
-	glBindTexture(GL_TEXTURE_2D, texture2);
-
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-	if (pixels)
-	{
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-		glGenerateMipmap(GL_TEXTURE_2D);
-	}
-	else
-	{
-		std::cout << "加载纹理:\"" << path2 << "\"失败！" << std::endl;
-	}
-	stbi_image_free(pixels);
-
-
-	glActiveTexture(GL_TEXTURE0 + 0);
-	glBindTexture(GL_TEXTURE_2D, texture1);
-	glActiveTexture(GL_TEXTURE0 + 1);
-	glBindTexture(GL_TEXTURE_2D, texture2);
-
+	glClearColor(bgColor.r, bgColor.g, bgColor.b, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void Engine::Bind()
+void Engine::InitBoard(int row, int col)
 {
-	glUseProgram(chessManShader);
+	if (row < 1 || row > chess.MAXR || col < 1 || col > chess.MAXC)
+	{
+		std::cout << "错误的行列数" << std::endl;
+		return;
+	}
+	chess.row = row;
+	chess.col = col;
+
+	// 设置缩放参数
+	scaleNum = row > col ? row : col;
+
+	// 初始化棋盘显示位置
+	for (int i = 0; i < chess.MAXR + 2; i++)
+		for (int j = 0; j < chess.MAXC + 2; j++)
+		{
+			chess.board[i][j].position = glm::vec3((float)i, (float)j, 0.0f);
+
+			chess.board[i][j].position.x = chess.board[i][j].position.x * 2 / (scaleNum +1) - 1.0f;
+			chess.board[i][j].position.y = chess.board[i][j].position.y * 2 / (scaleNum +1) - 1.0f;
+		}
+
+	// 初始化棋盘内容
+	for (int i = 1; i <= row; i++)
+		for (int j = 1; j <= col; j++)
+		{
+			chess.board[i][j].type = 0;
+			chess.board[i][j].isMi = false;
+		}
+}
+
+
+void Engine::DrawBoard(glm::vec2 sign)
+{
+	
+	//根据棋盘行列数设置缩放参数
+	glm::vec3 scale = glm::vec3(1.0f / (scaleNum +1), 1.0f / (scaleNum+1), 0.0f);
+
+	glUseProgram(boardShader);
 	glBindVertexArray(VAO);
+	// 画棋盘
+	glm::mat4 model = glm::mat4(1.0f);
+	for (int i = 1; i <= chess.col; i++)
+	{
+		for (int j = 1; j <= chess.row; j++)
+		{
+			model = glm::mat4(1.0f);
+			model = glm::translate(model, chess.board[i][j].position);
+			model = glm::scale(model, scale);
+			// 不是无效点
+			if (chess.board[i][j].type != -1)
+			{
+				//画直线
+				// 判断右方、上方是否是有效格点
+				if (chess.board[i + 1][j].type != -1)
+					DrawThing(line, model, 0.0f, glm::vec3(2.0f, 1.0f, 0.0f));
+				if (chess.board[i][j + 1].type != -1)
+					DrawThing(line, model, 90.0f, glm::vec3(1.0f, 2.0f, 0.0f));
+
+				//画斜线
+				if (chess.board[i][j].isMi)
+				{
+					// 判断右上、左上、左下、右下方是否为有效格点
+					if (chess.board[i + 1][j + 1].type >= 0)
+						DrawThing(slash, model, 0.0f, glm::vec3(2.0f, 2.0f, 0.0f));
+					if (chess.board[i - 1][j + 1].type >= 0)
+						DrawThing(slash, model, 90.0f, glm::vec3(2.0f, 2.0f, 0.0f));
+					if (chess.board[i - 1][j - 1].type >= 0)
+						DrawThing(slash, model, 180.0f, glm::vec3(2.0f, 2.0f, 0.0f));
+					if (chess.board[i + 1][j - 1].type >= 0)
+						DrawThing(slash, model, 270.0f, glm::vec3(2.0f, 2.0f, 0.0f));
+				}
+			}
+		}
+	}
+	// 画棋子
+
+	for (int i = 1; i <= chess.col; i++)
+	{
+		for (int j = 1; j <= chess.row; j++)
+		{
+			// 一号
+			if (chess.board[i][j].type == 1)
+			{
+				model = glm::mat4(1.0f);
+				model = glm::translate(model, chess.board[i][j].position);
+				model = glm::scale(model, scale);
+				DrawThing(texChessman1, model);
+			}
+			//二号
+			else if (chess.board[i][j].type == 2)
+			{
+				model = glm::mat4(1.0f);
+				model = glm::translate(model, chess.board[i][j].position);
+				model = glm::scale(model, scale);
+				DrawThing(texChessman2, model);
+			}
+
+			// 标记
+			if (i == (int)sign.x / SPEED && j == (int)sign.y / SPEED)
+			{
+				model = glm::mat4(1.0f);
+				model = glm::translate(model, chess.board[i][j].position);
+				model = glm::scale(model, scale);
+				DrawThing(ring, model);
+			}
+		}
+	}
+
+
 }
 
-void Engine::Unbind()
+void Engine::SetRule(int turn, int playMod, int howToChangeTurn, int mod, int okMod, int ifEndMod, int series, bool seriesMod, int endNum)
 {
+	chess.turn = turn;
+	chess.playMod = playMod;
+	chess.howToChangeTurn = howToChangeTurn;
+	chess.placeMod = mod;
+	chess.placeOkMod = okMod;
+	chess.ifEndMod = ifEndMod;
+
+	chess.series = series;
+	chess.seriesMod = seriesMod;
+	chess.endNum = endNum;
 }
 
-void Engine::DrawChessMan()
+void Engine::DrawThing(unsigned int texture, glm::mat4 model, float angle, glm::vec3 scale )
 {
-	glUseProgram(chessManShader);
-	glBindVertexArray(VAO);
+	SetUniform1i(boardShader, "tex", texture);
+	model = glm::scale(model, scale);
+	model = glm::rotate(model, glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
+	SetUniformMat4(boardShader, "model", model);
+
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-void Engine::DrawBoard()
+
+
+void Engine::SetUniform1i(unsigned int shader, const std::string& name, int value)
 {
-	glm::vec3 trans = glm::vec3(1.0f / 22.0f, 1.0f / 22.0f, 0.0f);
-	glm::vec3 scale = glm::vec3(1.0f / (row + 2.0f), 1.0f / (col + 2.0f), 0.0f);
-	//scale = trans;
-	for (int i = 0; i < row+2; i++)
-	{
-		for (int j = 0; j < col+2; j++)
-		{
-			if((i == 0 && i == row + 1) || (j == 0 && j == col + 1))
-				SetUniformVec3(boardShader, "color", 1.0f, 0.0f, 0.0f);
-
-			if ((i + j) % 2 == 0)
-				SetUniformVec3(boardShader, "color", boardColor1);
-			else
-				SetUniformVec3(boardShader, "color", boardColor2);
-
-
-
-
-
-			glm::mat4 model = glm::mat4(1.0f);
-			model = glm::translate(model, chessManPosition[i][j]);
-			model = glm::scale(model, scale);
-
-
-
-
-			SetUniformMat4(boardShader, "model", model);
-
-
-
-
-
-			glUseProgram(boardShader);
-			glBindVertexArray(VAO);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-
-
-
-		}
-	}
+	glUniform1i(glGetUniformLocation(shader, name.c_str()), value);
 }
 
-void Engine::AdjustBoard()
-{
-	
-	for (int i = 0; i < MAXR; i++)
-	{
-		for (int j = 0; j < MAXC; j++)
-		{
-			chessManPosition[i][j] = glm::vec3(i, j, 0);
-		}
-	}
-
-	for (int i = 0; i < row; i++)
-	{
-		for (int j = 0; j < col; j++)
-		{
-			//                         --------- 将棋盘坐标调整为屏幕坐标  -------------------------  
-			chessManPosition[i][j].x = chessManPosition[i][j].x * 2.0f / (row + 2.0f) - 1.0f + 1.0f / (row + 2.0f);
-			chessManPosition[i][j].y = chessManPosition[i][j].y * 2.0f / (col + 2.0f) - 1.0f + 1.0f / (col + 2.0f);
-		}
-	}
-}
-
-void Engine::SetUniformVec2(unsigned int shader, const std::string& name, glm::vec2& value)
+void Engine::SetUniform2v(unsigned int shader, const std::string& name, glm::vec2& value)
 {
 	glUniform2fv(glGetUniformLocation(shader, name.c_str()), 1, &value[0]);
 }
 
-void Engine::SetUniformVec2(unsigned int shader, const std::string& name, float x, float y)
+void Engine::SetUniform2v(unsigned int shader, const std::string& name, float x, float y)
 {
 	glUniform2f(glGetUniformLocation(shader, name.c_str()), x, y);
 }
 
-void Engine::SetUniformVec3(unsigned int shader, const std::string& name, glm::vec3& value)
+void Engine::SetUniform3v(unsigned int shader, const std::string& name, glm::vec3& value)
 {
 	glUniform3fv(glGetUniformLocation(shader, name.c_str()), 1, &value[0]);
 }
 
-void Engine::SetUniformVec3(unsigned int shader, const std::string& name, float x, float y, float z)
+void Engine::SetUniform3v(unsigned int shader, const std::string& name, float x, float y, float z)
 {
 	glUniform3f(glGetUniformLocation(shader, name.c_str()), x, y, z);
 }
@@ -211,8 +231,10 @@ void Engine::CreateVAO()
 
 }
 
-void Engine::CreateChessManVBO()
+
+void Engine::CreateBoardVBO()
 {
+	//0坐标点在中心
 	float vertices[] =
 	{
 		 1.0f,  1.0f, 1.0f, 1.0f,
@@ -221,13 +243,22 @@ void Engine::CreateChessManVBO()
 		-1.0f, -1.0f, 0.0f, 0.0f,
 		 1.0f, -1.0f, 1.0f, 0.0f,
 		 1.0f,  1.0f, 1.0f, 1.0f
-	};// --- pos ---- --texCoord--
+	};// --- pos ---- --texcoord--
 
+	//0坐标点在左下
+	//float vertices[] =
+	//{
+	//	 0.0f, 0.0f, 0.0f, 0.0f,
+	//	 0.0f, 2.0f, 0.0f, 1.0f,
+	//	 2.0f, 2.0f, 1.0f, 1.0f,
+	//	 2.0f, 2.0f, 1.0f, 1.0f,
+	//	 2.0f, 0.0f, 1.0f, 0.0f,
+	//	 0.0f, 0.0f, 0.0f, 0.0f
+	//};// --- pos ---- --texCoord--
 
+	glGenBuffers(1, &boardVBO);
 
-	glGenBuffers(1, &chessManVBO);
-
-	glBindBuffer(GL_ARRAY_BUFFER, chessManVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, boardVBO);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
@@ -235,47 +266,50 @@ void Engine::CreateChessManVBO()
 
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)8);
 	glEnableVertexAttribArray(1);
-
+	
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
 }
 
-void Engine::CreateBoardVBO()
+void Engine::Texture(const char* path, unsigned int& texture)
 {
-	//坐标点在中心
-	float vertices[] =
+	//上下翻转图片
+	stbi_set_flip_vertically_on_load(true);
+	unsigned char* pixels = nullptr;
+	int width, height, nrChannels;
+	pixels = stbi_load(path, &width, &height, &nrChannels, 4);
+	// req_comp
+	// 1 灰度图
+	// 2 灰度图加透明度
+	// 3 红绿蓝 RGB 三色图
+	// 4 红绿蓝加透明度 RGBA 图
+
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	if (pixels)
 	{
-		 1.0f,  1.0f,
-		-1.0f,  1.0f,
-		-1.0f, -1.0f,
-		-1.0f, -1.0f,
-		 1.0f, -1.0f,
-		 1.0f,  1.0f
-	};// --- pos ---- --texCoord--
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+	else
+	{
+		std::cout << "加载纹理:\"" << path << "\"失败！" << std::endl;
+	}
+	stbi_image_free(pixels);
 
-	//坐标点在左下
-	//float vertices[] =
-	//{
-	//	 0.0f, 0.0f,
-	//	 0.0f, 2.0f,
-	//	 2.0f, 2.0f,
-	//	 2.0f, 2.0f,
-	//	 2.0f, 0.0f,
-	//	 0.0f, 0.0f
-	//};// --- pos ---- --texCoord--
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
 
-
-
-	glGenBuffers(1, &boardVBO);
-
-	glBindBuffer(GL_ARRAY_BUFFER, boardVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-
+void Engine::BindTexture(unsigned int texture, unsigned int slot)
+{
+	glActiveTexture(GL_TEXTURE0 + slot);
+	glBindTexture(GL_TEXTURE_2D, texture);
 }
 
 unsigned int Engine::CreateShader(const char* vertexPath, const char* fragmentPath)
